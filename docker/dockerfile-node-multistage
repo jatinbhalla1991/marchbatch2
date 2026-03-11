@@ -1,0 +1,106 @@
+# Multi-Stage Dockerfile for Node.js Application
+# Demonstrates advanced multi-stage build with testing, building, and production stages
+
+# ============================================
+# Stage 1: Base - Common dependencies
+# ============================================
+FROM node:18-alpine AS base
+
+# Install security updates
+RUN apk update && apk upgrade
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# ============================================
+# Stage 2: Dependencies - Install all dependencies
+# ============================================
+FROM base AS dependencies
+
+# Install ALL dependencies (including devDependencies for testing/building)
+RUN npm ci
+
+# ============================================
+# Stage 3: Test - Run tests
+# ============================================
+FROM dependencies AS test
+
+# Copy source code
+COPY . .
+
+# Run linting and tests
+RUN npm run lint || true
+RUN npm run test || true
+
+# ============================================
+# Stage 4: Build - Build the application
+# ============================================
+FROM dependencies AS builder
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Remove dev dependencies
+RUN npm prune --production
+
+# ============================================
+# Stage 5: Production - Final minimal image
+# ============================================
+FROM node:18-alpine AS production
+
+# Install security updates
+RUN apk update && apk upgrade && apk add --no-cache dumb-init
+
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# Copy package files and production dependencies
+COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+
+# Copy built application
+COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+
+# Switch to non-root user
+USER nodejs
+
+# Expose application port
+EXPOSE 3000
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start the application
+CMD ["node", "dist/index.js"]
+
+# ============================================
+# Alternative Nginx Production Stage
+# ============================================
+FROM nginx:alpine AS nginx-production
+
+# Copy built files from builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy custom nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Create non-root user for nginx
+RUN addgroup -g 101 -S nginx && \
+    adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
+
+# Expose port
+EXPOSE 80
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

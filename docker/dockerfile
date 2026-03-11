@@ -1,20 +1,3 @@
-# Stage 1: Base stage for copying files
-FROM node:18-alpine AS builder
-
-# Set working directory
-WORKDIR /app
-
-# Copy the static files (index.html, etc.)
-COPY . .
-
-# Stage 2: Nginx stage for serving the static files
-FROM nginx:alpine
-
-# Copy the built files from the builder stage to Nginx's default directory
-COPY --from=builder /app/index.html /usr/share/nginx/html/index.html
-
-# Expose port 80
+FROM nginx  
+COPY index.html /usr/share/nginx/html/index.html
 EXPOSE 80
-
-# Start Nginx
-CMD ["nginx", "-g", "daemon off;"]

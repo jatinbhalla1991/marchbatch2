@@ -1,0 +1,107 @@
+# ==================================
+# Advanced Docker Compose Example
+# Multi-service application setup
+# ==================================
+version: '3.8'
+
+services:
+  # Frontend - Nginx serving static HTML
+  frontend:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: frontend-web
+    ports:
+      - "8080:80"
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backend - Node.js API (example)
+  backend:
+    image: node:18-alpine
+    container_name: backend-api
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=database
+      - DB_PORT=5432
+      - DB_NAME=myapp
+      - DB_USER=appuser
+      - DB_PASSWORD=secret123
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+    command: npm start
+
+  # Database - PostgreSQL
+  database:
+    image: postgres:15-alpine
+    container_name: postgres-db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=myapp
+      - POSTGRES_USER=appuser
+      - POSTGRES_PASSWORD=secret123
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d myapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Cache - Redis
+  cache:
+    image: redis:7-alpine
+    container_name: redis-cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    command: redis-server --appendonly yes
+
+# Networks
+networks:
+  app-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Volumes for persistent data
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local

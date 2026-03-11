@@ -1,0 +1,86 @@
+# Multi-Stage Dockerfile for Java Application
+# This demonstrates a practical multi-stage build for the HelloWorld.java file
+
+# ============================================
+# Stage 1: Build Stage
+# ============================================
+FROM eclipse-temurin:17-jdk-alpine AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy Java source file
+COPY HelloWorld.java .
+
+# Create build directory
+RUN mkdir -p build
+
+# Compile Java code
+RUN javac -d build HelloWorld.java
+
+# Create manifest file for JAR
+RUN echo "Main-Class: HelloWorld" > build/manifest.txt
+
+# Create JAR file
+RUN cd build && jar cfm HelloWorld.jar manifest.txt HelloWorld.class
+
+# ============================================
+# Stage 2: Runtime Stage (Production)
+# ============================================
+FROM eclipse-temurin:17-jre-alpine AS production
+
+# Set working directory
+WORKDIR /app
+
+# Copy only the JAR file from builder stage (not source code or build tools)
+COPY --from=builder /app/build/HelloWorld.jar .
+
+# Create a non-root user for security
+RUN addgroup -S javauser && adduser -S javauser -G javauser
+
+# Change ownership of the application
+RUN chown -R javauser:javauser /app
+
+# Switch to non-root user
+USER javauser
+
+# Set labels for metadata
+LABEL maintainer="your-email@example.com"
+LABEL version="1.0"
+LABEL description="Multi-stage Docker build for Java HelloWorld application"
+
+# Run the Java application
+CMD ["java", "-jar", "HelloWorld.jar"]
+
+# ============================================
+# Benefits of this Multi-Stage Build:
+# ============================================
+# 1. Smaller Image Size: 
+#    - Build stage includes JDK (~300-400MB)
+#    - Production stage only includes JRE (~150-200MB)
+#    - Final image is much smaller
+#
+# 2. Security:
+#    - Source code not included in final image
+#    - Build tools not exposed in production
+#    - Running as non-root user
+#
+# 3. Layer Caching:
+#    - Dependencies cached separately from code
+#    - Faster rebuilds during development
+#
+# 4. Clean Separation:
+#    - Build environment separate from runtime
+#    - Only necessary artifacts in final image
+
+# ============================================
+# How to Build and Run:
+# ============================================
+# Build the image:
+#   docker build -t java-hello-multistage -f dockerfile-java-multistage .
+#
+# Run the container:
+#   docker run --rm java-hello-multistage
+#
+# Check image size:
+#   docker images java-hello-multistage

@@ -15,11 +15,11 @@ jobs:
       - name: Build application
         id: build
         run: |
-          image_mapping=$(jq -c -n \
+          IMAGE_MAPPING=$(jq -c -n \
             --arg artifact "myapp.zip" \
             --arg version "1.0.0" \
             '{artifact: $artifact, version: $version}')
-          echo "image_mapping=$image_mapping" >> $GITHUB_OUTPUT
+          echo "image_mapping=$IMAGE_MAPPING" >> $GITHUB_OUTPUT
 
       - name: print JSON output
         run: echo '${{ steps.build.outputs.image_mapping }}'

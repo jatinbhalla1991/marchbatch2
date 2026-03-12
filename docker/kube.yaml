@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: html-container
-        image: jatinbhalla1991/docker-web:latest
+        image: jatinbhalla1991/kubetest
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80

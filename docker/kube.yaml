@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: html-app
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: html-deployment
+  namespace: html-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: html-app
+  template:
+    metadata:
+      labels:
+        app: html-app
+    spec:
+      containers:
+      - name: html-container
+        image: jatinbhalla1991/docker-web:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: html-service
+  namespace: html-app
+spec:
+  type: LoadBalancer
+  selector:
+    app: html-app
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80

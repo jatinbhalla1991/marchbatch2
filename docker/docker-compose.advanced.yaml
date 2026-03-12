@@ -10,6 +10,7 @@ services:
     build:
       context: .
       dockerfile: dockerfile
+    image: jatinbhalla1991/docker-web
     container_name: frontend-web
     ports:
       - "8080:80"

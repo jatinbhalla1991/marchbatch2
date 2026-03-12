@@ -1,2 +1,1 @@
-testing is done
-asasa
+https://medium.com/@ezekiel.umesi/understanding-deployment-strategies-in-kubernetes-3e447d060280

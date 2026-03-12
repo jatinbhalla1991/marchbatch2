@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: dockerfile
+    image: jatinbhalla1991/docker-web
     container_name: nginx-web-server
     ports:
       - "8080:80"

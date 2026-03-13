@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  sample-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jatinbhalla1991/sample-app:1.0.0
+    container_name: sample-app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Load generator for testing
+  load-generator:
+    image: alpine:latest
+    container_name: load-generator
+    depends_on:
+      - sample-app
+    command: >
+      sh -c "apk add --no-cache curl &&
+             echo 'Starting load generator...' &&
+             while true; do
+               RAND=$$((RANDOM % 100));
+               if [ $$RAND -lt 40 ]; then
+                 curl -s http://sample-app:3000/api/users > /dev/null;
+               elif [ $$RAND -lt 70 ]; then
+                 curl -s http://sample-app:3000/api/orders > /dev/null;
+               elif [ $$RAND -lt 85 ]; then
+                 curl -s -X POST http://sample-app:3000/api/users -H 'Content-Type: application/json' -d '{\"name\":\"Test\"}' > /dev/null;
+               elif [ $$RAND -lt 95 ]; then
+                 curl -s http://sample-app:3000/ > /dev/null;
+               else
+                 curl -s http://sample-app:3000/api/error > /dev/null;
+               fi;
+               sleep $$(echo \"$$RANDOM % 3 + 1\" | bc);
+             done"
+    networks:
+      - app-network
+    restart: unless-stopped
+    profiles:
+      - testing
+
+networks:
+  app-network:
+    driver: bridge

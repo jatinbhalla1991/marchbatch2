@@ -1,0 +1,14 @@
+apiVersion: v2
+name: sample-app
+description: A Helm chart for deploying sample Node.js application on EKS
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - nodejs
+  - prometheus
+  - monitoring
+  - eks
+maintainers:
+  - name: DevOps Team
+    email: devops@example.com

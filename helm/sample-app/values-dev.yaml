@@ -1,0 +1,33 @@
+# Development environment values
+
+replicaCount: 1
+
+image:
+  tag: "dev"
+  pullPolicy: Always
+
+container:
+  env:
+    - name: NODE_ENV
+      value: "development"
+    - name: LOG_LEVEL
+      value: "debug"
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+
+ingress:
+  enabled: true
+  hosts:
+    - host: sample-app-dev.example.com
+      paths:
+        - path: /
+          pathType: Prefix

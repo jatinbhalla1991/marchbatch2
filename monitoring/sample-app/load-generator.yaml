@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: load-generator-script
+  namespace: monitoring
+data:
+  load-test.sh: |
+    #!/bin/sh
+    echo "Installing curl..."
+    apk add --no-cache curl > /dev/null 2>&1
+    echo "Starting load generator for demo-app..."
+    echo "Target: http://demo-app:3000"
+    
+    while true; do
+      # Random delay between requests
+      DELAY=$(awk -v min=0.5 -v max=2 'BEGIN{srand(); print min+rand()*(max-min)}')
+      
+      # Random endpoint selection
+      RAND=$(awk 'BEGIN{srand(); print int(rand()*100)}')
+      
+      if [ $RAND -lt 40 ]; then
+        # 40% - GET /api/users
+        curl -s http://demo-app:3000/api/users > /dev/null
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - GET /api/users"
+      elif [ $RAND -lt 70 ]; then
+        # 30% - GET /api/orders  
+        curl -s http://demo-app:3000/api/orders > /dev/null
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - GET /api/orders"
+      elif [ $RAND -lt 85 ]; then
+        # 15% - POST /api/users
+        curl -s -X POST http://demo-app:3000/api/users > /dev/null
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - POST /api/users"
+      elif [ $RAND -lt 95 ]; then
+        # 10% - GET /
+        curl -s http://demo-app:3000/ > /dev/null
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - GET /"
+      else
+        # 5% - GET /api/error (to generate some errors)
+        curl -s http://demo-app:3000/api/error > /dev/null
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - GET /api/error"
+      fi
+      
+      sleep $DELAY
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+  namespace: monitoring
+  labels:
+    app: load-generator
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: load-generator
+  template:
+    metadata:
+      labels:
+        app: load-generator
+    spec:
+      containers:
+      - name: load-generator
+        image: alpine:latest
+        command: ["sh", "/scripts/load-test.sh"]
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: scripts
+        configMap:
+          name: load-generator-script
+          defaultMode: 0755

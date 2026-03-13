@@ -1,0 +1,312 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app
+  namespace: monitoring
+  labels:
+    app: demo-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      labels:
+        app: demo-app
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: demo-app
+        image: node:18-alpine
+        workingDir: /workspace
+        command: ["sh", "-c"]
+        args:
+          - |
+            cat > /workspace/package.json << 'EOFPKG'
+            {
+              "name": "monitoring-demo-app",
+              "version": "1.0.0",
+              "dependencies": {
+                "express": "^4.18.2",
+                "prom-client": "^15.1.0"
+              }
+            }
+            EOFPKG
+            
+            cat > /workspace/server.js << 'EOFJS'
+            const express = require('express');
+            const promClient = require('prom-client');
+            const app = express();
+            const PORT = process.env.PORT || 3000;
+            const register = new promClient.Registry();
+            promClient.collectDefaultMetrics({ register });
+            const httpRequestDuration = new promClient.Histogram({
+              name: 'http_request_duration_seconds',
+              help: 'Duration of HTTP requests in seconds',
+              labelNames: ['method', 'route', 'status_code'],
+              buckets: [0.1, 0.5, 1, 2, 5]
+            });
+            const httpRequestsTotal = new promClient.Counter({
+              name: 'http_requests_total',
+              help: 'Total number of HTTP requests',
+              labelNames: ['method', 'route', 'status_code']
+            });
+            const businessMetric = new promClient.Counter({
+              name: 'business_operations_total',
+              help: 'Total number of business operations',
+              labelNames: ['operation_type', 'status']
+            });
+            register.registerMetric(httpRequestDuration);
+            register.registerMetric(httpRequestsTotal);
+            register.registerMetric(businessMetric);
+            app.use((req, res, next) => {
+              const start = Date.now();
+              res.on('finish', () => {
+                const duration = (Date.now() - start) / 1000;
+                httpRequestDuration.labels(req.method, req.path, res.statusCode).observe(duration);
+                httpRequestsTotal.labels(req.method, req.path, res.statusCode).inc();
+              });
+              next();
+            });
+            app.get('/health', (req, res) => {
+              res.status(200).json({ status: 'healthy' });
+            });
+            app.get('/', (req, res) => {
+              res.json({ message: 'Monitoring Demo Application' });
+            });
+            app.get('/api/users', (req, res) => {
+              setTimeout(() => {
+                businessMetric.labels('get_users', 'success').inc();
+                res.json({ users: [{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }] });
+              }, Math.random() * 1000);
+            });
+            app.post('/api/users', (req, res) => {
+              if (Math.random() > 0.1) {
+                businessMetric.labels('create_user', 'success').inc();
+                res.status(201).json({ id: Math.floor(Math.random() * 1000) });
+              } else {
+                businessMetric.labels('create_user', 'error').inc();
+                res.status(500).json({ error: 'Failed' });
+              }
+            });
+            app.get('/api/orders', (req, res) => {
+              setTimeout(() => {
+                businessMetric.labels('get_orders', 'success').inc();
+                res.json({ orders: [{ id: 101, amount: 99.99 }] });
+              }, Math.random() * 2000);
+            });
+            app.get('/api/error', (req, res) => {
+              businessMetric.labels('error_test', 'error').inc();
+              res.status(500).json({ error: 'Simulated error' });
+            });
+            app.get('/metrics', async (req, res) => {
+              res.set('Content-Type', register.contentType);
+              res.end(await register.metrics());
+            });
+            app.listen(PORT, () => console.log('App listening on port ' + PORT));
+            EOFJS
+            
+            npm install
+            node server.js
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: PORT
+          value: "3000"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+      volumes:
+      - name: workspace
+        emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-app-code
+  namespace: monitoring
+data:
+  package.json: |
+    {
+      "name": "monitoring-demo-app",
+      "version": "1.0.0",
+      "description": "Sample Node.js application with Prometheus metrics",
+      "main": "server.js",
+      "scripts": {
+        "start": "node server.js"
+      },
+      "dependencies": {
+        "express": "^4.18.2",
+        "prom-client": "^15.1.0"
+      }
+    }
+  server.js: |
+    const express = require('express');
+    const promClient = require('prom-client');
+
+    const app = express();
+    const PORT = process.env.PORT || 3000;
+
+    const register = new promClient.Registry();
+    promClient.collectDefaultMetrics({ register });
+
+    const httpRequestDuration = new promClient.Histogram({
+      name: 'http_request_duration_seconds',
+      help: 'Duration of HTTP requests in seconds',
+      labelNames: ['method', 'route', 'status_code'],
+      buckets: [0.1, 0.5, 1, 2, 5]
+    });
+
+    const httpRequestsTotal = new promClient.Counter({
+      name: 'http_requests_total',
+      help: 'Total number of HTTP requests',
+      labelNames: ['method', 'route', 'status_code']
+    });
+
+    const activeConnections = new promClient.Gauge({
+      name: 'http_active_connections',
+      help: 'Number of active HTTP connections'
+    });
+
+    const businessMetric = new promClient.Counter({
+      name: 'business_operations_total',
+      help: 'Total number of business operations',
+      labelNames: ['operation_type', 'status']
+    });
+
+    register.registerMetric(httpRequestDuration);
+    register.registerMetric(httpRequestsTotal);
+    register.registerMetric(activeConnections);
+    register.registerMetric(businessMetric);
+
+    app.use((req, res, next) => {
+      const start = Date.now();
+      activeConnections.inc();
+      res.on('finish', () => {
+        const duration = (Date.now() - start) / 1000;
+        httpRequestDuration.labels(req.method, req.path, res.statusCode).observe(duration);
+        httpRequestsTotal.labels(req.method, req.path, res.statusCode).inc();
+        activeConnections.dec();
+      });
+      next();
+    });
+
+    app.get('/health', (req, res) => {
+      res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
+    });
+
+    app.get('/', (req, res) => {
+      res.json({ 
+        message: 'Monitoring Demo Application',
+        version: '1.0.0',
+        endpoints: { health: '/health', metrics: '/metrics', api: '/api/*' }
+      });
+    });
+
+    app.get('/api/users', (req, res) => {
+      const processingTime = Math.random() * 1000;
+      setTimeout(() => {
+        businessMetric.labels('get_users', 'success').inc();
+        res.json({ users: [{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }] });
+      }, processingTime);
+    });
+
+    app.post('/api/users', (req, res) => {
+      const success = Math.random() > 0.1;
+      if (success) {
+        businessMetric.labels('create_user', 'success').inc();
+        res.status(201).json({ id: Math.floor(Math.random() * 1000), created: true });
+      } else {
+        businessMetric.labels('create_user', 'error').inc();
+        res.status(500).json({ error: 'Failed to create user' });
+      }
+    });
+
+    app.get('/api/orders', (req, res) => {
+      const processingTime = Math.random() * 2000;
+      setTimeout(() => {
+        businessMetric.labels('get_orders', 'success').inc();
+        res.json({ orders: [{ id: 101, amount: 99.99, status: 'completed' }] });
+      }, processingTime);
+    });
+
+    app.get('/api/error', (req, res) => {
+      businessMetric.labels('error_test', 'error').inc();
+      res.status(500).json({ error: 'Simulated error for testing' });
+    });
+
+    app.get('/metrics', async (req, res) => {
+      res.set('Content-Type', register.contentType);
+      res.end(await register.metrics());
+    });
+
+    app.use((req, res) => {
+      res.status(404).json({ error: 'Not found' });
+    });
+
+    app.listen(PORT, () => {
+      console.log(`Monitoring Demo App listening on port ${PORT}`);
+      console.log(`Metrics available at http://localhost:${PORT}/metrics`);
+    });
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app
+  namespace: monitoring
+  labels:
+    app: demo-app
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  selector:
+    app: demo-app
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app-external
+  namespace: monitoring
+  labels:
+    app: demo-app
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  selector:
+    app: demo-app
